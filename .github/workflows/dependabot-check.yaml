@@ -1,8 +1,12 @@
 name: Dependabot Security Policy (Org-wide)
 
 # This workflow is designed to be enforced via GitHub Organization Rulesets.
-# It runs on pull requests targeting main/master and checks for Dependabot alerts
-# using the GITHUB_TOKEN scoped to the target repository automatically.
+# It runs on pull requests targeting main/master and checks for Dependabot alerts.
+#
+# Requirements:
+#   DEPENDABOT_ALERTS_TOKEN — org-level secret: a PAT or GitHub App token with
+#                             the 'vulnerability_alerts' (read) permission.
+#                             GITHUB_TOKEN cannot access the Dependabot alerts API.
 #
 # Behavior is controlled by the DEPENDABOT_BLOCK org-level variable:
 #   0 (or unset) — warn only, pipeline continues
@@ -15,9 +19,6 @@ on:
   pull_request:
     branches: [main, master]
 
-permissions:
-  security-events: read
-
 jobs:
   security-check:
     name: Dependabot Security Check
@@ -26,7 +27,7 @@ jobs:
       - name: Check for Dependabot alerts
         uses: actions/github-script@v8
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.DEPENDABOT_ALERTS_TOKEN }}
           script: |
             const blockLevel = '${{ vars.DEPENDABOT_BLOCK }}' || '0';
 
