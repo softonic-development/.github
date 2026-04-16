@@ -1,0 +1,110 @@
+name: Dependabot Security Policy (Org-wide)
+
+# This workflow is designed to be enforced via GitHub Organization Rulesets.
+# It runs on pull requests targeting main/master and checks for Dependabot alerts
+# using the GITHUB_TOKEN scoped to the target repository automatically.
+#
+# Behavior is controlled by the DEPENDABOT_BLOCK org-level variable:
+#   0 (or unset) — warn only, pipeline continues
+#   1             — block if critical alerts exist
+#   2             — block if critical or high alerts exist
+#
+# See .github/org-policies/dependabot-security.md for setup instructions.
+
+on:
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  security-events: read
+
+jobs:
+  security-check:
+    name: Dependabot Security Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for Dependabot alerts
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const blockLevel = '${{ vars.DEPENDABOT_BLOCK }}' || '0';
+
+            // Always fetch critical and high; fetch moderate only for level 2
+            const severities = ['critical', 'high'];
+            if (blockLevel === '2') {
+              severities.push('moderate');
+            }
+
+            const alertsBySeverity = {};
+            for (const severity of severities) {
+              const { data: alerts } = await github.rest.dependabot.listAlertsForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                severity,
+                per_page: 100,
+              });
+              alertsBySeverity[severity] = alerts;
+            }
+
+            const criticalAlerts = alertsBySeverity['critical'] || [];
+            const highAlerts = alertsBySeverity['high'] || [];
+            const moderateAlerts = alertsBySeverity['moderate'] || [];
+            const criticalAndHigh = [...criticalAlerts, ...highAlerts];
+
+            const tableHeader = [{data: 'Advisory', header: true}, {data: 'Package', header: true}, {data: 'Severity', header: true}];
+            const toRows = (alerts) => alerts.map(alert => [
+              alert.security_advisory.summary,
+              alert.dependency.package.name,
+              alert.security_advisory.severity,
+            ]);
+
+            // --- Block level 0: warn only ---
+            if (blockLevel === '0') {
+              if (criticalAndHigh.length > 0) {
+                core.summary.addRaw('⚠️ **Critical Dependabot Alerts Found. Soon we will start blocking the workflow with critical issues.**\n\n');
+                core.summary.addTable([tableHeader, ...toRows(criticalAndHigh)]);
+                await core.summary.write();
+                core.warning(`Found ${criticalAndHigh.length} critical/high Dependabot alert(s). Please resolve them.`);
+              } else {
+                core.info('No critical or high Dependabot alerts found.');
+              }
+              return;
+            }
+
+            // --- Block level 1: block on critical ---
+            if (blockLevel === '1') {
+              if (criticalAlerts.length > 0) {
+                core.summary.addHeading('Critical Dependabot Alerts Found — Workflow Blocked', 2);
+                core.summary.addTable([tableHeader, ...toRows(criticalAndHigh)]);
+                await core.summary.write();
+                core.setFailed(`Found ${criticalAlerts.length} critical Dependabot alert(s). Please resolve them before building.`);
+              } else if (highAlerts.length > 0) {
+                core.summary.addHeading('High Dependabot Alerts Found', 2);
+                core.summary.addTable([tableHeader, ...toRows(highAlerts)]);
+                await core.summary.write();
+                core.warning(`Found ${highAlerts.length} high Dependabot alert(s). Please resolve them.`);
+              } else {
+                core.info('No critical or high Dependabot alerts found.');
+              }
+              return;
+            }
+
+            // --- Block level 2: block on critical + high ---
+            if (blockLevel === '2') {
+              if (criticalAndHigh.length > 0) {
+                core.summary.addHeading('Critical and High Dependabot Alerts Found — Workflow Blocked', 2);
+                core.summary.addTable([tableHeader, ...toRows(criticalAndHigh)]);
+                await core.summary.write();
+                core.setFailed(`Found ${criticalAndHigh.length} critical/high Dependabot alert(s). Please resolve them before building.`);
+              } else if (moderateAlerts.length > 0) {
+                core.summary.addHeading('Moderate Dependabot Alerts Found', 2);
+                core.summary.addTable([tableHeader, ...toRows(moderateAlerts)]);
+                await core.summary.write();
+                core.warning(`Found ${moderateAlerts.length} moderate Dependabot alert(s). Consider resolving them.`);
+              } else {
+                core.info('No critical, high, or moderate Dependabot alerts found.');
+              }
+              return;
+            }
