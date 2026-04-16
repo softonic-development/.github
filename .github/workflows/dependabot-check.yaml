@@ -1,4 +1,4 @@
-name: Dependabot Security Policy (Org-wide)
+name: Dependabot Security Policy
 
 # This workflow is designed to be enforced via GitHub Organization Rulesets.
 # It runs on pull requests targeting main/master and checks for Dependabot alerts.
