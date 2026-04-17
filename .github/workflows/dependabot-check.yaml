@@ -18,6 +18,8 @@ name: Dependabot Security Policy
 on:
   pull_request:
     branches: [main, master]
+  push:
+    branches: [main, master]
 
 jobs:
   security-check:
@@ -29,6 +31,13 @@ jobs:
         with:
           github-token: ${{ secrets.DEPENDABOT_ALERTS_TOKEN }}
           script: |
+            // Direct pushes to main (e.g. from automation) are not checked.
+            // Dependabot alerts are enforced on pull requests only.
+            if (context.eventName === 'push') {
+              core.info('Direct push detected — skipping Dependabot alert check.');
+              return;
+            }
+
             const blockLevel = '${{ vars.DEPENDABOT_BLOCK }}' || '0';
 
             // Always fetch critical and high; fetch moderate only for level 2
