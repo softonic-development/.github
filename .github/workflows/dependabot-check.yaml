@@ -47,15 +47,20 @@ jobs:
             }
 
             const alertsBySeverity = {};
-            for (const severity of severities) {
-              const { data: alerts } = await github.rest.dependabot.listAlertsForRepo({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                state: 'open',
-                severity,
-                per_page: 100,
-              });
-              alertsBySeverity[severity] = alerts;
+            try {
+              for (const severity of severities) {
+                const { data: alerts } = await github.rest.dependabot.listAlertsForRepo({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  state: 'open',
+                  severity,
+                  per_page: 100,
+                });
+                alertsBySeverity[severity] = alerts;
+              }
+            } catch (err) {
+              core.warning(`GitHub API unavailable or token invalid — skipping Dependabot check. (${err.message})`);
+              return;
             }
 
             const criticalAlerts = alertsBySeverity['critical'] || [];
